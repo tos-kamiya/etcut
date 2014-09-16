@@ -23,6 +23,11 @@ $ git blame -n Database.java | grep Kamiya --color=ALWAYS | python etcut.py 60:1
 
 ![The above result](readme_images/after_etcut.png)
 
+Who needs this?
+===============
+
+**I** need this. Someone else? I do not know...
+
 License
 =======
 
