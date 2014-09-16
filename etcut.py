@@ -20,43 +20,61 @@ def add_index_w_neglecting_escape_sequence(char_seq):
             else:
                 index_seq.append(idx)
                 idx += 1
-    return index_seq, idx
+    index_seq.append(idx)
+    return index_seq
 
 
-def gen_cut_w_thru_escape_sequences(char_range):
-    start_pos, end_pos = char_range
+class CutWithThruingEscapeSequence:
+    def __init__(self, index_range, starting_leader=None, ending_leader=None):
+        self.index_range = index_range
+        self.starting_leader = starting_leader
+        self.ending_leader = ending_leader
 
-    def cut_func(L):
-        buf = []
-        char_seq = L.decode('utf-8')
-        index_seq, char_count = add_index_w_neglecting_escape_sequence(char_seq)
-        assert len(index_seq) == len(char_seq)
-        if start_pos is None:
-            sp = 0
-        elif start_pos < 0:
-            sp = char_count + start_pos
-        else:
-            sp = start_pos
+    def cut(self, text_utf8):
+        char_seq = text_utf8.decode('utf-8')
+        index_seq = add_index_w_neglecting_escape_sequence(char_seq)
+        convertedL = self._cut(char_seq, index_seq)
+        return convertedL.encode('utf-8')
+
+    def _cut(self, char_seq, index_seq):
+        start_pos, end_pos = self.index_range
+
+        assert len(index_seq) == len(char_seq) + 1
+        char_count = index_seq[-1]
+        sp = 0 if start_pos is None else \
+                char_count + start_pos if start_pos < 0 else \
+                start_pos
         sp = max(0, min(char_count, sp))
-        if end_pos is None:
-            ep = char_count
-        elif end_pos < 0:
-            ep = char_count + end_pos
-        else:
-            ep = end_pos
+        ep = char_count if end_pos is None else \
+                char_count + end_pos if end_pos < 0 else \
+                end_pos
         ep = max(0, min(char_count, ep))
-        for c, i in zip(char_seq, index_seq):
-            if i is None or sp <= i < ep:
-                buf.append(c)
-        return u''.join(buf).encode('utf-8')
 
-    return cut_func
+        char_omitted_at_start = False
+        char_omitted_at_end = False
+        buf = []
+        for c, i in zip(char_seq, index_seq):
+            if i is None:
+                buf.append(c)
+            elif i < sp:
+                char_omitted_at_start = True
+            elif i >= ep:
+                char_omitted_at_end = True
+            else:
+                buf.append(c)
+
+        if char_omitted_at_start and self.starting_leader:
+            buf.insert(0, self.starting_leader)
+        if char_omitted_at_end and self.ending_leader:
+            buf.append(self.ending_leader)
+
+        return u''.join(buf)
 
 
 USAGE = '''
 Etcut, Escape-sequence Thru-ing CUT command.
 
-Usage: %s RANGE [INPUT]
+Usage: %s [-l] RANGE [INPUT]
 
 Removes characters appears out of RANGE in each line in INPUT.
 RANGE's format is either 'start_pos:end_pos', ':end_pos', or 'start_pos:',
@@ -70,7 +88,12 @@ An index can be a negative value. Such negative index is counted from a end of l
 def main(argv):
     argv0 = argv.pop(0)
 
-    char_range_str = argv.pop(0)
+    opt_w_leader = False
+    if argv and argv[0] in ('-l', '--with-leader'):
+        opt_w_leader = True
+        argv.pop(0)
+
+    index_range_str = argv.pop(0)
 
     input_file = None
     if argv:
@@ -79,29 +102,30 @@ def main(argv):
     if argv:
         sys.exit("error: too many command-line arguments")
 
-    i = char_range_str.find(':')
+    i = index_range_str.find(':')
     if i < 0:
-        v = int(char_range_str)
-        char_range = (v, v + 1)
+        v = int(index_range_str)
+        index_range = (v, v + 1)
     else:
-        start_str, end_str = char_range_str[:i], char_range_str[i + 1:]
+        start_str, end_str = index_range_str[:i], index_range_str[i + 1:]
         start_pos = int(start_str) if start_str else None
         end_pos = int(end_str) if end_str else None
-        char_range = (start_pos, end_pos)
+        index_range = (start_pos, end_pos)
 
-    cut_func = gen_cut_w_thru_escape_sequences(char_range)
+    starting_leader, ending_leader = (u'... ', u' ...') if opt_w_leader else (None, None)
+    cwt = CutWithThruingEscapeSequence(index_range, starting_leader, ending_leader)
 
     write = sys.stdout.write
     if input_file:
         with open(input_file, 'rb') as inp:
             for L in inp:
                 L = L.rstrip('\n')
-                write(cut_func(L))
+                write(cwt.cut(L))
                 write('\n')
     else:
         for L in sys.stdin:
             L = L.rstrip('\n')
-            write(cut_func(L))
+            write(cwt.cut(L))
             write('\n')
 
 
