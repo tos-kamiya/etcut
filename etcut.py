@@ -72,6 +72,7 @@ def main(argv):
 
     char_range_str = argv.pop(0)
 
+    input_file = None
     if argv:
         input_file = argv.pop(0)
 
